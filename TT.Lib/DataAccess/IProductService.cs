@@ -112,6 +112,8 @@ namespace TT.Lib.DataAccess
     /// <typeparam name="TEntity">The entity type.</typeparam>
     public interface IReadWriteService<TEntity> : IReadService<TEntity>
     {
+        Task<IQueryable<TEntity>> Query();
+
         /// <summary>
         /// Adds an <typeparamref name="TEntity"/> to the <see cref="IReadWriteService{TEntity}"/>.
         /// </summary>
@@ -272,6 +274,8 @@ namespace TT.Lib.DataAccess
         {
             this.repo = repo;
         }
+
+        public async Task<IQueryable<T>> Query() => this.repo.Query();
 
         public async Task<IEnumerable<T>> Get() => await this.repo.Get();
 
