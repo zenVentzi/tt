@@ -14,6 +14,8 @@ namespace TT.Lib
     {
         string connectionString;
 
+        public DbSet<Hardware> Hardware { get; set; }
+
         public DbSet<Product> Products { get; set; }
 
         public DbSet<Property> Properties { get; set; }
