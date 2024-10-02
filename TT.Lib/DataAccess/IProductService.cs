@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TT.Lib.DTOs;
 using TT.Lib.Entities;
 
 namespace TT.Lib.DataAccess
@@ -253,9 +254,15 @@ namespace TT.Lib.DataAccess
 
     public interface IProductPropertyService : IReadWriteService<ProductProperty> { }
 
-    public interface IProductService : IReadWriteService<Product> { }
+    public interface IProductService : IReadWriteService<Product> 
+    {
+        Task<IEnumerable<ProductDTO>> GetByBrandId(string brandId);
+    }
 
-    public interface IBrandService : IReadWriteService<Brand> { }
+    public interface IBrandService : IReadWriteService<Brand>
+    {
+        Task<IEnumerable<BrandDTO>> Export(string brandId);
+    }
 
     public interface IProductRepository<T> : IReadWriteRepository<T> where T : class, IId { }
 
@@ -405,11 +412,21 @@ namespace TT.Lib.DataAccess
     {
         private readonly TTDbContext dbContext;
         private readonly IBrandRepository<Brand> mainRepository;
+        private readonly IProductService productService;
 
-        public BrandService(TTDbContext dbContext, IBrandRepository<Brand> mainRepository) : base(mainRepository)
+        public BrandService(TTDbContext dbContext, IBrandRepository<Brand> mainRepository, IProductService productService) : base(mainRepository)
         {
             this.dbContext = dbContext;
             this.mainRepository = mainRepository ?? throw new ArgumentNullException(nameof(mainRepository));
+            this.productService = productService ?? throw new ArgumentNullException(nameof(productService));
+        }
+
+        public async Task<IEnumerable<BrandDTO>> Export(string brandId)
+        {
+            // get products with brandId from productService
+            var products = await this.productService.GetByBrandId(brandId);
+            // create a brandDTO object
+            throw new NotImplementedException();
         }
     }
 
@@ -422,6 +439,12 @@ namespace TT.Lib.DataAccess
         {
             this.dbContext = dbContext;
             this.mainRepository = mainRepository ?? throw new ArgumentNullException(nameof(mainRepository));
+        }
+
+        public async Task<IEnumerable<ProductDTO>> GetByBrandId(string brandId)
+        {
+            // get products with brandId
+            throw new NotImplementedException();
         }
     }
 
