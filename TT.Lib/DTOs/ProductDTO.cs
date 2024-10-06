@@ -1,8 +1,10 @@
-﻿namespace TT.Lib.DTOs
+﻿using System.Collections.Generic;
+
+namespace TT.Lib.DTOs
 {
     public class ProductDTO
     {
         public string Code { get; set; }
-        public ProductPropertyDTO[] Properties { get; set; }
+        public Dictionary<string, object> Properties { get; set; }
     }
 }
