@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Dynamic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -252,16 +253,20 @@ namespace TT.Lib.DataAccess
 
     public interface IPropertyService : IReadWriteService<Property> { }
 
-    public interface IProductPropertyService : IReadWriteService<ProductProperty> { }
+    public interface IProductPropertyService : IReadWriteService<ProductProperty> 
+    {
+        Dictionary<string, object> GetProductPropertyDTOs(IEnumerable<ProductProperty> allProductProperties, IEnumerable<Property> allProperties);
+    }
 
     public interface IProductService : IReadWriteService<Product> 
     {
-        Task<IEnumerable<ProductDTO>> GetByBrandId(string brandId);
+        ProductDTO ExportProduct(Product product, IEnumerable<Property> allProperties);
+        Task<ProductDTO> ExportProduct(string productId);
     }
 
     public interface IBrandService : IReadWriteService<Brand>
     {
-        Task<IEnumerable<BrandDTO>> Export(string brandId);
+        Task<IEnumerable<BrandDTO>> Export();
     }
 
     public interface IProductRepository<T> : IReadWriteRepository<T> where T : class, IId { }
@@ -413,20 +418,36 @@ namespace TT.Lib.DataAccess
         private readonly TTDbContext dbContext;
         private readonly IBrandRepository<Brand> mainRepository;
         private readonly IProductService productService;
+        private readonly IPropertyService propertyService;
 
-        public BrandService(TTDbContext dbContext, IBrandRepository<Brand> mainRepository, IProductService productService) : base(mainRepository)
+        public BrandService(
+            TTDbContext dbContext,
+            IBrandRepository<Brand> mainRepository,
+            IProductService productService,
+            IPropertyService propertyService) : base(mainRepository)
         {
             this.dbContext = dbContext;
             this.mainRepository = mainRepository ?? throw new ArgumentNullException(nameof(mainRepository));
             this.productService = productService ?? throw new ArgumentNullException(nameof(productService));
+            this.propertyService = propertyService ?? throw new ArgumentNullException(nameof(propertyService));
         }
 
-        public async Task<IEnumerable<BrandDTO>> Export(string brandId)
+        public async Task<IEnumerable<BrandDTO>> Export()
         {
-            // get products with brandId from productService
-            var products = await this.productService.GetByBrandId(brandId);
-            // create a brandDTO object
-            throw new NotImplementedException();
+            var brands = await this.mainRepository.Get();
+            var allProperties = await this.propertyService.Get();
+
+            var brandDTOs = brands.Select(b => ExportBrand(b, allProperties));
+            return brandDTOs;
+        }
+
+        private BrandDTO ExportBrand(Brand brand, IEnumerable<Property> allProperties) 
+        {
+            var products = brand.Products;
+            var productDTOs = products.Select(p => this.productService.ExportProduct(p, allProperties));
+            var brandDTO = new BrandDTO { Name = brand.Name, products = productDTOs };
+
+            return brandDTO;
         }
     }
 
@@ -434,17 +455,33 @@ namespace TT.Lib.DataAccess
     {
         private readonly TTDbContext dbContext;
         private readonly IProductRepository<Product> mainRepository;
+        private readonly IProductPropertyService productPropertyService;
+        private readonly IPropertyService propertyService;
 
-        public ProductService(TTDbContext dbContext, IProductRepository<Product> mainRepository) : base(mainRepository)
+        public ProductService(TTDbContext dbContext, IProductRepository<Product> mainRepository, IProductPropertyService productPropertyService, IPropertyService propertyService) : base(mainRepository)
         {
             this.dbContext = dbContext;
             this.mainRepository = mainRepository ?? throw new ArgumentNullException(nameof(mainRepository));
+            this.productPropertyService = productPropertyService;
+            this.propertyService = propertyService;
         }
 
-        public async Task<IEnumerable<ProductDTO>> GetByBrandId(string brandId)
+        public ProductDTO ExportProduct(Product product, IEnumerable<Property> allProperties)
         {
-            // get products with brandId
-            throw new NotImplementedException();
+            var productPropertyDTOs = this.productPropertyService.GetProductPropertyDTOs(product.Properties, allProperties);
+            var productDTO = new ProductDTO { Properties = productPropertyDTOs, Code = product.Key };
+
+            return productDTO;
+        }
+
+        public async Task<ProductDTO> ExportProduct(string productId)
+        {
+            var product = await this.mainRepository.GetByKey(productId);
+            var allProperties = await this.propertyService.Get();
+            var productPropertyDTOs = this.productPropertyService.GetProductPropertyDTOs(product.Properties, allProperties);
+            var productDTO = new ProductDTO { Properties = productPropertyDTOs, Code = product.Key };
+
+            return productDTO;
         }
     }
 
@@ -452,11 +489,94 @@ namespace TT.Lib.DataAccess
     {
         private readonly TTDbContext dbContext;
         private readonly IProductPropertyRepository<ProductProperty> mainRepository;
+        private readonly IPropertyService propertyService;
 
-        public ProductPropertyService(TTDbContext dbContext, IProductPropertyRepository<ProductProperty> mainRepository) : base(mainRepository)
+        public ProductPropertyService(TTDbContext dbContext, IProductPropertyRepository<ProductProperty> mainRepository, IPropertyService propertyService) : base(mainRepository)
         {
             this.dbContext = dbContext;
             this.mainRepository = mainRepository ?? throw new ArgumentNullException(nameof(mainRepository));
+            this.propertyService = propertyService;
+        }
+
+        public Dictionary<string, object> GetProductPropertyDTOs(IEnumerable<ProductProperty> allProductProperties, IEnumerable<Property> allProperties)
+        {
+            var propertiesList = new List<Dictionary<string, object>>();
+
+            foreach (var currentProp in allProductProperties)
+            {
+                var field = this.GetField(currentProp, allProperties);
+                propertiesList.Add(field);
+            }
+
+            var merged = this.GetMergedFields(propertiesList);
+            return merged;
+        }
+
+        private Dictionary<string, object> GetMergedFields(List<Dictionary<string, object>> dictList)
+        {
+            var merged = dictList[0];
+            for (int i = 0; i < dictList.Count() - 2; i++)
+            {
+                merged = this.MergeDictionaries(merged, dictList[i + 1]);
+            }
+            
+            return merged;
+        }
+
+        Dictionary<string, object> MergeDictionaries(Dictionary<string, object> dict1, Dictionary<string, object> dict2)
+        {
+            var result = new Dictionary<string, object>(dict1);
+
+            foreach (var kvp in dict2)
+            {
+                if (result.ContainsKey(kvp.Key))
+                {
+                    // If both values are dictionaries, merge them recursively
+                    if (result[kvp.Key] is Dictionary<string, object> subDict1 && kvp.Value is Dictionary<string, object> subDict2)
+                    {
+                        result[kvp.Key] = MergeDictionaries(subDict1, subDict2);
+                    }
+                    else
+                    {
+                        // Otherwise, overwrite or handle the value conflict
+                        result[kvp.Key] = kvp.Value; // Overwrite with dict2's value
+                    }
+                }
+                else
+                {
+                    // If key is not in dict1, just add it
+                    result[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return result;
+        }
+
+        private Dictionary<string, object> GetField(ProductProperty property, IEnumerable<Property> allProperties) 
+        {
+            var current = property.Property;
+            var nestedFields = new Stack<string>();
+
+            do
+            {
+                nestedFields.Push(current.Name);
+                current = allProperties.First(p => p.Id == current.ParentId);
+            } while (current.ParentId != 1);
+
+            var fieldDict = ArrToDict(nestedFields, property.Value);
+            return fieldDict;
+        }
+
+        private Dictionary<string, object> ArrToDict(Stack<string> keys, string value) 
+        { 
+            if (keys.Count() == 1)
+            {
+                return new Dictionary<string, object>() { { keys.Pop(), value } };
+            }
+
+            var currentKey = keys.Pop();
+
+            return new Dictionary<string, object>() { { currentKey, ArrToDict(keys, value) } };
         }
     }
 
