@@ -18,12 +18,13 @@ namespace TT.Api.Controllers
             this.productService = productService;
         }
 
+        [HttpGet("export/{productKey?}")]
         public async Task<IActionResult> Export(string? productKey)
         {
             try
             {
-                if (productKey == null) 
-                { 
+                if (productKey == null)
+                {
                     return Ok(await mainService.Export());
                 }
 
@@ -35,7 +36,8 @@ namespace TT.Api.Controllers
                 return StatusCode(500, "Something went wrong. Please check admin or server logs for more info.");
             }
         }
-    [HttpDelete]
-    public new async Task<IActionResult> Delete(Brand brand) => Ok(await base.Delete(brand));
-}
+
+        [HttpDelete]
+        public new async Task<IActionResult> Delete(Brand brand) => Ok(await base.Delete(brand));
+    }
 }
