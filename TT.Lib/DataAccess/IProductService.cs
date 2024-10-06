@@ -261,7 +261,7 @@ namespace TT.Lib.DataAccess
     public interface IProductService : IReadWriteService<Product> 
     {
         ProductDTO ExportProduct(Product product, IEnumerable<Property> allProperties);
-        Task<ProductDTO> ExportProduct(string productId);
+        Task<ProductDTO> ExportProduct(string productKey);
     }
 
     public interface IBrandService : IReadWriteService<Brand>
@@ -434,7 +434,11 @@ namespace TT.Lib.DataAccess
 
         public async Task<IEnumerable<BrandDTO>> Export()
         {
-            var brands = await this.mainRepository.Get();
+            var brands = await this.mainRepository.Query()
+                .Include(brand => brand.Products)
+                .ThenInclude(p => p.Properties)
+                .ThenInclude(p => p.Property)
+                .ToListAsync();
             var allProperties = await this.propertyService.Get();
 
             var brandDTOs = brands.Select(b => ExportBrand(b, allProperties));
@@ -474,9 +478,12 @@ namespace TT.Lib.DataAccess
             return productDTO;
         }
 
-        public async Task<ProductDTO> ExportProduct(string productId)
+        public async Task<ProductDTO> ExportProduct(string productKey)
         {
-            var product = await this.mainRepository.GetByKey(productId);
+            var product = await this.mainRepository.Query()
+                .Include(p => p.Properties)
+                .ThenInclude(p => p.Property)
+                .FirstAsync(p => p.Key == productKey);
             var allProperties = await this.propertyService.Get();
             var productPropertyDTOs = this.productPropertyService.GetProductPropertyDTOs(product.Properties, allProperties);
             var productDTO = new ProductDTO { Properties = productPropertyDTOs, Code = product.Key };
@@ -508,14 +515,14 @@ namespace TT.Lib.DataAccess
                 propertiesList.Add(field);
             }
 
-            var merged = this.GetMergedFields(propertiesList);
+            var merged = propertiesList.Count > 0 ? this.GetMergedFields(propertiesList) : null;
             return merged;
         }
 
         private Dictionary<string, object> GetMergedFields(List<Dictionary<string, object>> dictList)
         {
             var merged = dictList[0];
-            for (int i = 0; i < dictList.Count() - 2; i++)
+            for (int i = 0; i < dictList.Count() - 1; i++)
             {
                 merged = this.MergeDictionaries(merged, dictList[i + 1]);
             }
